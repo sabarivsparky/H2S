@@ -27,13 +27,25 @@ app.use((_req, res, next) => {
 });
 
 // ─── Health ──────────────────────────────────────────────────────────────────
-app.get("/api/health", (_req, res) => {
+app.get("/api/health", async (_req, res) => {
+  let workersCount = 0;
+  try {
+    const list = await store.listWorkers?.();
+    workersCount = Array.isArray(list) ? list.length : 0;
+  } catch {
+    // ignore
+  }
+
   res.json({
     ok: true,
     service: "h2s-dosai-api",
+    version: "0.2.0",
     store: store.mode || "unknown",
     kiosk_only: true,
-    note: "Scanning is kiosk-station only — not worker phones.",
+    sensor_configured: isSensorConfigured,
+    workers_registered: workersCount,
+    timestamp: new Date().toISOString(),
+    note: "Scanning is fixed-kiosk-station only at muster points — not worker phones.",
   });
 });
 

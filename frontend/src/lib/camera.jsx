@@ -120,6 +120,9 @@ function QrScannerInner({ onDecode, active, demoCodes }) {
       {/* Live camera viewfinder — always rendered so Html5Qrcode can attach to it */}
       <div id={regionId} className="qr-box" style={{ display: showFallback ? "none" : undefined }} />
 
+      {/* Hidden element dedicated for scanFile instances to prevent DOM not found error */}
+      <div id={`${regionId}-filescan`} style={{ display: "none" }} />
+
       {camState === "starting" && !err && (
         <div className="camera-requesting" style={{ minHeight: 90 }}>
           <div className="camera-requesting-spinner" />

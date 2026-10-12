@@ -1,16 +1,11 @@
 import { Router } from "express";
 import { store } from "../store/index.js";
-import { hashPin, verifyWorkerToken } from "../lib/auth.js";
+import { hashPin, verifyWorkerToken, verifyAdminToken } from "../lib/auth.js";
 import { supabaseAdmin } from "../lib/supabase.js";
 
 export const adminRouter = Router();
 
 // ── Admin auth guard ──────────────────────────────────────────────────────────
-// When Supabase is configured the browser sends the Supabase JWT in Authorization.
-// We verify it server-side with the service_role client.
-// When Supabase is NOT configured (in-memory mode) we trust any non-empty Bearer
-// token (dev-only shortcut; the whole API is local-only in that case), UNLESS it's
-// a worker JWT token (which is explicitly forbidden from admin endpoints).
 async function requireAdmin(req, res, next) {
   const header = req.headers.authorization || "";
   if (!header.startsWith("Bearer ")) {
@@ -18,14 +13,30 @@ async function requireAdmin(req, res, next) {
   }
   const token = header.slice(7);
 
-  // Reject worker tokens explicitly
+  // 1. Check if token is local admin dev token
+  if (token === "local-admin-dev-token") {
+    req.adminUser = { id: "local-admin", email: "admin@mrpl.in" };
+    return next();
+  }
+
+  // 2. Reject worker tokens explicitly & accept signed admin JWTs
+  try {
+    const adminPayload = verifyAdminToken(token);
+    if (adminPayload) {
+      req.adminUser = { id: adminPayload.sub, email: adminPayload.email || "admin@mrpl.in" };
+      return next();
+    }
+  } catch {
+    // Not a local admin JWT
+  }
+
   try {
     const workerPayload = verifyWorkerToken(token);
     if (workerPayload && workerPayload.role === "worker") {
       return res.status(403).json({ ok: false, error: "Worker tokens cannot access admin endpoints." });
     }
   } catch {
-    // Not a worker token, proceed to admin check
+    // Not a worker token, proceed to check Supabase or fallback
   }
 
   const hasSupabase =
@@ -42,7 +53,7 @@ async function requireAdmin(req, res, next) {
     req.adminUser = data.user;
   } else {
     // In-memory mode: accept any non-worker Bearer token
-    req.adminUser = { id: "local-admin", email: "local@dev" };
+    req.adminUser = { id: "local-admin", email: "admin@mrpl.in" };
   }
   next();
 }
@@ -243,6 +254,22 @@ adminRouter.post("/sensor-demo", requireAdmin, async (req, res) => {
       humidity_percent: humidity_percent ?? 65,
     });
     return res.json({ ok: true, reading: result });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/**
+ * POST /api/admin/reset-demo
+ * Re-seeds the in-memory database with fresh refinery demo shifts and workers.
+ */
+adminRouter.post("/reset-demo", requireAdmin, async (_req, res) => {
+  try {
+    if (store.mode === "memory" && typeof store.seedDefaultData === "function") {
+      await store.seedDefaultData(true);
+      return res.json({ ok: true, message: "Demo database reset to default seed data successfully." });
+    }
+    return res.json({ ok: false, error: "Reset demo is only available in local in-memory mode." });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });
   }

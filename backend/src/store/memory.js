@@ -7,11 +7,10 @@ function uid() {
   return crypto.randomUUID();
 }
 
-// Empty store — populated only through admin onboarding (POST /api/admin/workers)
-// and real kiosk operations. No hardcoded demo data.
+// In-memory data store with realistic MRPL seed data for instant zero-config testing.
 const db = {
   workers:  [],   // { worker_id, name, department, shift, pin_hash, active, created_at }
-  wristbands: [], // { wristband_qr, batch_id, status }
+  wristbands: [], // { wristband_qr, batch_id, status, created_at }
   bindings: [],
   scans:    [],
   ambient:  [],
@@ -30,12 +29,154 @@ function openBindingByWorker(id) {
   return db.bindings.find((b) => b.worker_id === id && !b.shift_end);
 }
 
+let seedPromise = null;
+
+async function seedDefaultData(force = false) {
+  if (db.workers.length > 0 && !force) return;
+  const { default: bcrypt } = await import("bcrypt");
+
+  const [h1234, h5678, h1122, h3344, h9988] = await Promise.all([
+    bcrypt.hash("1234", 10),
+    bcrypt.hash("5678", 10),
+    bcrypt.hash("1122", 10),
+    bcrypt.hash("3344", 10),
+    bcrypt.hash("9988", 10),
+  ]);
+
+  const now = Date.now();
+  const isoAgo = (mins) => new Date(now - mins * 60 * 1000).toISOString();
+
+  db.workers = [
+    { worker_id: "WKR-0001", name: "Arun Kumar", department: "CDU (Crude Distillation)", shift: "A", pin_hash: h1234, active: true, created_at: isoAgo(1440) },
+    { worker_id: "WKR-0002", name: "Priya Sharma", department: "SRU (Sulfur Recovery)", shift: "A", pin_hash: h5678, active: true, created_at: isoAgo(1440) },
+    { worker_id: "WKR-0003", name: "Rajesh Patel", department: "VDU (Vacuum Distillation)", shift: "B", pin_hash: h1122, active: true, created_at: isoAgo(1200) },
+    { worker_id: "WKR-0004", name: "Ananya Rao", department: "HGU (Hydrogen Generation)", shift: "C", pin_hash: h3344, active: true, created_at: isoAgo(960) },
+    { worker_id: "WKR-0005", name: "Vikram Singh", department: "Safety & Inspection", shift: "General", pin_hash: h9988, active: true, created_at: isoAgo(720) },
+  ];
+
+  db.wristbands = [
+    { wristband_qr: "WB-2026-000481", batch_id: "BATCH-2026-MRPL-01", status: "available", created_at: isoAgo(1440) },
+    { wristband_qr: "WB-2026-000482", batch_id: "BATCH-2026-MRPL-01", status: "bound", created_at: isoAgo(1440) },
+    { wristband_qr: "WB-2026-000483", batch_id: "BATCH-2026-MRPL-01", status: "available", created_at: isoAgo(1440) },
+    { wristband_qr: "WB-2026-000484", batch_id: "BATCH-2026-MRPL-02", status: "available", created_at: isoAgo(720) },
+    { wristband_qr: "WB-2026-000485", batch_id: "BATCH-2026-MRPL-01", status: "used", created_at: isoAgo(1440) },
+  ];
+
+  db.bindings = [
+    {
+      id: "bind-001",
+      worker_id: "WKR-0001",
+      wristband_qr: "WB-2026-000482",
+      shift_start: isoAgo(180),
+      shift_end: null,
+      kiosk_location: "KIOSK-MUSTER-01",
+    },
+    {
+      id: "bind-002",
+      worker_id: "WKR-0002",
+      wristband_qr: "WB-2026-000485",
+      shift_start: isoAgo(540),
+      shift_end: isoAgo(60),
+      kiosk_location: "KIOSK-MUSTER-01",
+    },
+  ];
+
+  db.scans = [
+    {
+      id: "scan-seed-01",
+      wristband_qr: "WB-2026-000482",
+      worker_id: "WKR-0001",
+      timestamp: isoAgo(150),
+      image_url: "[synthetic-baseline-scan]",
+      quality_status: "pass",
+      kiosk_location: "KIOSK-MUSTER-01",
+      dose_ppm_h: 0.35,
+      confidence: 0.94,
+      risk_band: "low",
+    },
+    {
+      id: "scan-seed-02",
+      wristband_qr: "WB-2026-000482",
+      worker_id: "WKR-0001",
+      timestamp: isoAgo(30),
+      image_url: "[synthetic-mid-scan]",
+      quality_status: "pass",
+      kiosk_location: "KIOSK-MUSTER-01",
+      dose_ppm_h: 0.85,
+      confidence: 0.91,
+      risk_band: "low",
+    },
+    {
+      id: "scan-seed-03",
+      wristband_qr: "WB-2026-000485",
+      worker_id: "WKR-0002",
+      timestamp: isoAgo(300),
+      image_url: "[synthetic-scan]",
+      quality_status: "pass",
+      kiosk_location: "KIOSK-MUSTER-01",
+      dose_ppm_h: 2.40,
+      confidence: 0.88,
+      risk_band: "medium",
+    },
+    {
+      id: "scan-seed-04",
+      wristband_qr: "WB-2026-000485",
+      worker_id: "WKR-0002",
+      timestamp: isoAgo(75),
+      image_url: "[synthetic-scan]",
+      quality_status: "pass",
+      kiosk_location: "KIOSK-MUSTER-01",
+      dose_ppm_h: 4.60,
+      confidence: 0.86,
+      risk_band: "medium",
+    },
+    {
+      id: "scan-seed-05",
+      wristband_qr: "WB-HIST-0001",
+      worker_id: "WKR-0003",
+      timestamp: isoAgo(720),
+      image_url: "[synthetic-scan]",
+      quality_status: "pass",
+      kiosk_location: "KIOSK-MUSTER-01",
+      dose_ppm_h: 14.20,
+      confidence: 0.90,
+      risk_band: "high",
+    },
+  ];
+
+  // Seed ambient telemetry
+  db.ambient = [];
+  for (let i = 24; i >= 0; i--) {
+    db.ambient.push({
+      id: `amb-seed-${i}`,
+      worker_id: null,
+      kiosk_location: "KIOSK-MUSTER-01",
+      ambient_h2s_ppm: Number((0.8 + Math.sin(i * 0.4) * 0.5 + Math.random() * 0.2).toFixed(2)),
+      temperature_c: Number((28.5 + (24 - i) * 0.05).toFixed(1)),
+      humidity_percent: Number((64 - Math.sin(i * 0.3) * 3).toFixed(1)),
+      timestamp: isoAgo(i * 2),
+    });
+  }
+}
+
+// Auto-seed in background on startup
+seedPromise = seedDefaultData().catch((e) => console.error("[memoryStore] Seed failed:", e));
+
+async function ensureSeeded() {
+  if (seedPromise) await seedPromise;
+}
+
 export const memoryStore = {
   mode: "memory",
+
+  async seedDefaultData(force = false) {
+    return seedDefaultData(force);
+  },
 
   // ── Worker management ────────────────────────────────────────────────────────
 
   async createWorker({ worker_id, name, department, shift, pin_hash }) {
+    await ensureSeeded();
     if (db.workers.find((w) => w.worker_id === worker_id)) {
       return { ok: false, status: 409, error: "Worker ID already exists." };
     }
@@ -46,6 +187,7 @@ export const memoryStore = {
   },
 
   async verifyWorkerPin(worker_id, pin) {
+    await ensureSeeded();
     const { default: bcrypt } = await import("bcrypt");
     const w = db.workers.find((w) => w.worker_id === worker_id);
     if (!w || !w.active) return false;        // don't reveal whether id exists
@@ -53,6 +195,7 @@ export const memoryStore = {
   },
 
   async deactivateWorker(worker_id) {
+    await ensureSeeded();
     const w = db.workers.find((w) => w.worker_id === worker_id);
     if (!w) return { ok: false, status: 404, error: "Worker not found." };
     w.active = false;
@@ -62,6 +205,7 @@ export const memoryStore = {
   // ── Wristband management ─────────────────────────────────────────────────────
 
   async registerWristband({ wristband_qr, batch_id }) {
+    await ensureSeeded();
     if (band(wristband_qr)) return { ok: false, status: 409, error: "Wristband already registered." };
     const wb = { wristband_qr, batch_id: batch_id || "BATCH-UNSET", status: "available", created_at: nowIso() };
     db.wristbands.push(wb);
@@ -69,6 +213,7 @@ export const memoryStore = {
   },
 
   async listWristbands() {
+    await ensureSeeded();
     return [...db.wristbands].reverse();
   },
 
@@ -177,6 +322,7 @@ export const memoryStore = {
   },
 
   async listWorkers() {
+    await ensureSeeded();
     return db.workers
       .filter((w) => w.active !== false)
       .map((w) => {
@@ -194,6 +340,7 @@ export const memoryStore = {
 
   /** Returns ALL workers (active + inactive) without pin_hash — for admin management. */
   async listAllWorkers() {
+    await ensureSeeded();
     return db.workers.map((w) => {
       const { pin_hash: _ph, ...safe } = w;
       return safe;
@@ -201,6 +348,7 @@ export const memoryStore = {
   },
 
   async updateWorkerPin(worker_id, pin_hash) {
+    await ensureSeeded();
     const w = db.workers.find((wk) => wk.worker_id === worker_id);
     if (!w) return { ok: false, status: 404, error: "Worker not found." };
     w.pin_hash = pin_hash;
@@ -208,6 +356,7 @@ export const memoryStore = {
   },
 
   async activateWorker(worker_id) {
+    await ensureSeeded();
     const w = db.workers.find((wk) => wk.worker_id === worker_id);
     if (!w) return { ok: false, status: 404, error: "Worker not found." };
     w.active = true;
@@ -216,6 +365,7 @@ export const memoryStore = {
 
   /** Worker self-lookup: returns profile + current shift + recent scans. */
   async getWorkerProfile(worker_id) {
+    await ensureSeeded();
     const w = db.workers.find((wk) => wk.worker_id === worker_id && wk.active !== false);
     if (!w) return { ok: false, status: 404, error: "Worker not found." };
     const { pin_hash: _ph, ...safe } = w;
@@ -235,6 +385,7 @@ export const memoryStore = {
   },
 
   async workerHistory(worker_id) {
+    await ensureSeeded();
     const w = db.workers.find((wk) => wk.worker_id === worker_id);
     if (!w) return { ok: false, status: 404, error: "Worker not found." };
     const { pin_hash: _ph, ...safeWorker } = w;
@@ -245,3 +396,7 @@ export const memoryStore = {
     return { ok: true, worker: safeWorker, scans, bindings: db.bindings.filter((b) => b.worker_id === worker_id) };
   },
 };
+
+export const memStore = memoryStore;
+export { seedDefaultData };
+
