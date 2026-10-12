@@ -55,13 +55,13 @@ REF_STRIP_COLORS = list(BAND_COLORS.values())
 
 
 def risk_band(dose: float) -> str:
-    if dose < 1.0:
+    if dose <= 0.05:
         return "fresh"
-    if dose < 5.0:
+    if dose <= 1.0:
         return "low"
-    if dose < 20.0:
+    if dose <= 5.0:
         return "medium"
-    if dose < 50.0:
+    if dose <= 20.0:
         return "high"
     return "very_high"
 

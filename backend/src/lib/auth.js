@@ -34,9 +34,25 @@ export function signWorkerToken(worker_id) {
   );
 }
 
+/** Sign an admin JWT for local dev / demo mode. */
+export function signAdminToken(email = "admin@mrpl.in") {
+  return jwt.sign(
+    { sub: "admin", role: "admin", email },
+    JWT_SECRET,
+    { expiresIn: "24h", issuer: "h2s-dosai" }
+  );
+}
+
 /** Verify and decode a worker JWT. Throws on invalid/expired token. */
 export function verifyWorkerToken(token) {
   return jwt.verify(token, JWT_SECRET, { issuer: "h2s-dosai" });
+}
+
+/** Verify an admin JWT. */
+export function verifyAdminToken(token) {
+  const payload = jwt.verify(token, JWT_SECRET, { issuer: "h2s-dosai" });
+  if (payload.role !== "admin") throw new Error("Not an admin token");
+  return payload;
 }
 
 /**

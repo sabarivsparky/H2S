@@ -35,10 +35,10 @@ FEATURE_NAMES = ["L", "a", "b", "darkness", "rel_dark", "patch_r", "patch_g", "p
 
 # ── Risk band helpers ─────────────────────────────────────────────────────────
 def risk_band(dose: float) -> str:
-    if dose < 1.0:   return "fresh"
-    if dose < 5.0:   return "low"
-    if dose < 20.0:  return "medium"
-    if dose < 50.0:  return "high"
+    if dose <= 0.05: return "fresh"
+    if dose <= 1.0:  return "low"
+    if dose <= 5.0:  return "medium"
+    if dose <= 20.0: return "high"
     return "very_high"
 
 

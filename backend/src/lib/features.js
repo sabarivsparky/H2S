@@ -7,12 +7,14 @@
 import sharp from "sharp";
 
 export function riskBandFromDose(dose) {
-  if (dose <= 0) return "fresh";
+  if (dose <= 0.05) return "fresh";
   if (dose <= 1) return "low";
   if (dose <= 5) return "medium";
   if (dose <= 20) return "high";
   return "very_high";
 }
+
+export const doseToRiskBand = riskBandFromDose;
 
 function meanRgb(data, width, height, x0, y0, x1, y1) {
   let r = 0,
@@ -105,9 +107,9 @@ export function heuristicDose(features) {
   let b_lab = features.b;
 
   if (L == null || a == null || b_lab == null) {
-    const pr = features.patch_r ?? 200;
-    const pg = features.patch_g ?? 200;
-    const pb = features.patch_b ?? 200;
+    const pr = features.patch_r ?? features.rgb_mean?.[0] ?? 200;
+    const pg = features.patch_g ?? features.rgb_mean?.[1] ?? 200;
+    const pb = features.patch_b ?? features.rgb_mean?.[2] ?? 200;
     const lab = rgbToLabApprox({ r: pr, g: pg, b: pb });
     L = lab.L;
     a = lab.a;
@@ -133,11 +135,15 @@ export function heuristicDose(features) {
   const w1 = (1 / Math.max(0.1, nearest.dist)) / totalWeight;
   const w2 = (1 / Math.max(0.1, second.dist)) / totalWeight;
   let interpolatedDose = w1 * nearest.targetDose + w2 * second.targetDose;
-  if (nearest.name === "fresh" && nearest.dist < 8) {
+
+  if (nearest.name === "very_high") {
+    const darkRatio = features.rel_dark ?? features.darkness ?? (1 - L / 100);
+    interpolatedDose = Number(Math.min(50.0, Math.max(20.5, 20.0 + (darkRatio - 0.5) * 50.0)).toFixed(2));
+  } else if (nearest.name === "fresh" && nearest.dist < 10) {
     interpolatedDose = 0.0;
   }
 
-  const confidence = Math.max(0.65, Math.min(0.92, 0.95 - nearest.dist * 0.005));
+  const confidence = Math.max(0.68, Math.min(0.95, 0.96 - nearest.dist * 0.005));
 
   return {
     dose_ppm_h: Number(interpolatedDose.toFixed(3)),

@@ -10,7 +10,7 @@
  */
 import { Router } from "express";
 import { store } from "../store/index.js";
-import { signWorkerToken, workerAuthMiddleware } from "../lib/auth.js";
+import { signWorkerToken, signAdminToken, workerAuthMiddleware } from "../lib/auth.js";
 
 export const authRouter = Router();
 
@@ -120,4 +120,44 @@ authRouter.get("/worker/me", workerAuthMiddleware, async (req, res) => {
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });
   }
+});
+
+/**
+ * POST /api/auth/admin/login
+ * Body: { email, password }
+ * Handles admin authentication in local in-memory mode or demo presentations.
+ */
+authRouter.post("/admin/login", async (req, res) => {
+  const { email, password } = req.body || {};
+  const hasSupabase =
+    process.env.SUPABASE_URL &&
+    !String(process.env.SUPABASE_URL).includes("YOUR_PROJECT");
+
+  const cleanEmail = String(email || "admin@mrpl.in").trim().toLowerCase();
+  const cleanPass = String(password || "").trim();
+
+  // If local in-memory mode (no Supabase)
+  if (!hasSupabase) {
+    // If no password provided, or default demo password "admin123" / "admin"
+    if (!cleanPass || cleanPass === "admin123" || cleanPass === "admin") {
+      const token = signAdminToken(cleanEmail);
+      return res.json({
+        ok: true,
+        token,
+        user: { id: "local-admin", email: cleanEmail },
+        role: "admin",
+        mode: "memory",
+      });
+    }
+    return res.status(401).json({
+      ok: false,
+      error: "Invalid admin password. Default demo password is: admin123",
+    });
+  }
+
+  // When Supabase is configured, admin signs in via Supabase client SDK
+  return res.status(400).json({
+    ok: false,
+    error: "Supabase cloud auth is enabled — authenticate via Supabase Auth client.",
+  });
 });

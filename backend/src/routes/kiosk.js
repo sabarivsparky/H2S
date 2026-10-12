@@ -25,11 +25,12 @@ function fail(res, status, code, error) {
  */
 kioskRouter.post("/bind", async (req, res) => {
   const { worker_id, wristband_qr, kiosk_location, kiosk_id } = req.body || {};
-  if (!worker_id || !wristband_qr) {
+  const targetWorker = worker_id || req.worker?.worker_id;
+  if (!targetWorker || !wristband_qr) {
     return fail(res, 400, "MISSING_QR", "Scan worker ID QR then wristband QR.");
   }
   const result = await store.bindWristband({
-    worker_id: String(worker_id).trim(),
+    worker_id: String(targetWorker).trim(),
     wristband_qr: String(wristband_qr).trim(),
     kiosk_location: kiosk_location || kiosk_id || "KIOSK-MUSTER-01",
   });
@@ -43,7 +44,13 @@ kioskRouter.post("/bind", async (req, res) => {
  * Sets shift_end and permanently marks wristband 'used' — no future bind possible.
  */
 kioskRouter.post("/close", async (req, res) => {
-  const { wristband_qr, kiosk_location, kiosk_id } = req.body || {};
+  let { wristband_qr, kiosk_location, kiosk_id } = req.body || {};
+  if (!wristband_qr && req.worker?.worker_id) {
+    const prof = await store.getWorkerProfile(req.worker.worker_id);
+    if (prof.ok && prof.active_wristband) {
+      wristband_qr = prof.active_wristband;
+    }
+  }
   if (!wristband_qr) {
     return fail(res, 400, "MISSING_QR", "Scan the wristband QR to close the shift.");
   }
@@ -61,7 +68,13 @@ kioskRouter.post("/close", async (req, res) => {
  * Returns the worker bound to this wristband (must be 'bound' + active shift).
  */
 kioskRouter.post("/lookup", async (req, res) => {
-  const { wristband_qr } = req.body || {};
+  let { wristband_qr } = req.body || {};
+  if (!wristband_qr && req.worker?.worker_id) {
+    const prof = await store.getWorkerProfile(req.worker.worker_id);
+    if (prof.ok && prof.active_wristband) {
+      wristband_qr = prof.active_wristband;
+    }
+  }
   if (!wristband_qr) return fail(res, 400, "MISSING_QR", "Wristband QR required.");
   const result = await store.lookupBand(String(wristband_qr).trim());
   if (!result.ok) return fail(res, result.status || 404, "LOOKUP_FAILED", result.error);
@@ -82,8 +95,20 @@ kioskRouter.post("/lookup", async (req, res) => {
  *   6. Upload image to Supabase Storage
  */
 kioskRouter.post("/scan", upload.single("image"), async (req, res) => {
-  const wristband_qr = String(req.body?.wristband_qr || "").trim();
+  let wristband_qr = String(req.body?.wristband_qr || "").trim();
   const kiosk_id = req.body?.kiosk_id || "KIOSK-MUSTER-01";
+
+  // Auto-resolve active wristband for logged-in worker if not provided
+  if (!wristband_qr && req.worker?.worker_id) {
+    try {
+      const prof = await store.getWorkerProfile(req.worker.worker_id);
+      if (prof.ok && prof.active_wristband) {
+        wristband_qr = prof.active_wristband;
+      }
+    } catch {
+      // ignore
+    }
+  }
 
   if (!wristband_qr) return fail(res, 400, "MISSING_QR", "Scan the wristband QR first.");
   if (!req.file?.buffer) return fail(res, 400, "MISSING_IMAGE", "Capture a wristband photo.");
